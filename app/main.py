@@ -7,14 +7,22 @@ from app.database import SessionLocal
 from app.models import Transaction
 from app.schemas import TransactionCreate
 
+# Week-3 imports
+from app.rules.rule_engine import RuleEngine
+from app.workers.celery_worker import send_alert
+from app.ml.scoring import ml_score
+
 app = FastAPI(title="SentinelStream")
 
-# Redis connection (Redis already running on localhost:6379)
+# Redis connection
 redis_client = redis.Redis(
     host="localhost",
     port=6379,
-    decode_responses=True
+    decode_responses=True,
+    socket_connect_timeout=5
 )
+
+rule_engine = RuleEngine()
 
 def get_db():
     db = SessionLocal()
@@ -32,35 +40,52 @@ def create_transaction(
     txn: TransactionCreate,
     db: Session = Depends(get_db)
 ):
-    # ---- Redis caching logic (Week-2 requirement) ----
+    # ---------- Redis caching (Week-2) ----------
     cache_key = f"user:{txn.user_id}"
     cached_user = redis_client.get(cache_key)
 
     if cached_user:
-        user_data = json.loads(cached_user)
         cache_hit = True
     else:
-        user_data = {"user_id": txn.user_id}
-        redis_client.set(cache_key, json.dumps(user_data), ex=300)
+        redis_client.set(
+            cache_key,
+            json.dumps({"user_id": txn.user_id}),
+            ex=300
+        )
         cache_hit = False
-    # -------------------------------------------------
+    # -------------------------------------------
 
-    # Business logic
-    risk = "LOW"
-    if txn.amount > 5000:
-        risk = "HIGH"
+    # ---------- Week-3 ML + Rule Engine ----------
+    ml_risk = ml_score(txn)
+    rules_triggered = rule_engine.evaluate(txn)
 
-    # Store transaction in DB
+    final_risk = "LOW"
+
+    # ✅ UPDATED LOGIC (IMPORTANT CHANGE)
+    if ml_risk < -0.2 or "HIGH_AMOUNT" in rules_triggered:
+        final_risk = "HIGH"
+    # --------------------------------------------
+
+    # ---------- Store transaction ----------
     record = Transaction(
         user_id=txn.user_id,
         amount=txn.amount,
-        risk=risk
+        risk=final_risk
     )
 
     db.add(record)
     db.commit()
+    db.refresh(record)
+    # ---------------------------------------
+
+    # ---------- Week-3 Async Alert ----------
+    if final_risk == "HIGH":
+        send_alert.delay(record.id)
+    # ---------------------------------------
 
     return {
-        "risk": risk,
+        "risk": final_risk,
+        "ml_risk_score": ml_risk,
+        "rules_triggered": rules_triggered,
         "cached": cache_hit
     }
