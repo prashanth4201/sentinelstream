@@ -1,25 +1,23 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
+from typing import List
+import time
 import redis
-import json
 
-from app.database import SessionLocal
-from app.models import Transaction
-from app.schemas import TransactionCreate
-
-# Week-3 imports
-from app.rules.rule_engine import RuleEngine
-from app.workers.celery_worker import send_alert
 from app.ml.scoring import ml_score
+from app.db.session import SessionLocal
+from app.models.transaction import Transaction
+from app.schemas.transaction import TransactionCreate, TransactionOut
+from app.rules.rule_engine import RuleEngine
+from app.routes.fraud_rules import router as fraud_rules_router
 
 app = FastAPI(title="SentinelStream")
 
-# Redis connection
+# Redis
 redis_client = redis.Redis(
     host="localhost",
     port=6379,
-    decode_responses=True,
-    socket_connect_timeout=5
+    decode_responses=True
 )
 
 rule_engine = RuleEngine()
@@ -33,40 +31,23 @@ def get_db():
 
 @app.get("/")
 def root():
-    return {"status": "FastAPI running"}
+    return {"status": "SentinelStream running"}
 
+# 🔥 TRANSACTION ENDPOINT (ML + RULES + LATENCY)
 @app.post("/transaction")
 def create_transaction(
     txn: TransactionCreate,
     db: Session = Depends(get_db)
 ):
-    # ---------- Redis caching (Week-2) ----------
-    cache_key = f"user:{txn.user_id}"
-    cached_user = redis_client.get(cache_key)
+    start = time.time()  # ⏱ start latency timer
 
-    if cached_user:
-        cache_hit = True
-    else:
-        redis_client.set(
-            cache_key,
-            json.dumps({"user_id": txn.user_id}),
-            ex=300
-        )
-        cache_hit = False
-    # -------------------------------------------
-
-    # ---------- Week-3 ML + Rule Engine ----------
     ml_risk = ml_score(txn)
     rules_triggered = rule_engine.evaluate(txn)
 
     final_risk = "LOW"
-
-    # ✅ UPDATED LOGIC (IMPORTANT CHANGE)
-    if ml_risk < -0.2 or "HIGH_AMOUNT" in rules_triggered:
+    if ml_risk < -0.3 or "HIGH_AMOUNT" in rules_triggered:
         final_risk = "HIGH"
-    # --------------------------------------------
 
-    # ---------- Store transaction ----------
     record = Transaction(
         user_id=txn.user_id,
         amount=txn.amount,
@@ -76,16 +57,21 @@ def create_transaction(
     db.add(record)
     db.commit()
     db.refresh(record)
-    # ---------------------------------------
 
-    # ---------- Week-3 Async Alert ----------
-    if final_risk == "HIGH":
-        send_alert.delay(record.id)
-    # ---------------------------------------
+    latency = time.time() - start  # ⏱ end latency timer
+    print("Transaction latency:", latency)
 
     return {
         "risk": final_risk,
-        "ml_risk_score": ml_risk,
+        "ml_score": ml_risk,
         "rules_triggered": rules_triggered,
-        "cached": cache_hit
+        "latency": latency
     }
+
+# 🔍 ALL TRANSACTION HISTORY (ONE CLICK)
+@app.get("/transactions", response_model=List[TransactionOut])
+def list_transactions(db: Session = Depends(get_db)):
+    return db.query(Transaction).all()
+
+# Fraud rules
+app.include_router(fraud_rules_router)

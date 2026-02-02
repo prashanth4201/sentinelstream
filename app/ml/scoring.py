@@ -1,8 +1,11 @@
 import joblib
-import numpy as np
+import os
 
-model = joblib.load("app/ml/fraud_model.pkl")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "isolation_forest.pkl")
+
+model = joblib.load(MODEL_PATH)
 
 def ml_score(txn):
-    data = np.array([[txn.amount, 0, 0, 0]])
-    return float(model.decision_function(data)[0])
+    features = [[txn.amount]]
+    return model.decision_function(features)[0]

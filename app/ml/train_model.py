@@ -1,15 +1,28 @@
-from sklearn.ensemble import IsolationForest
 import joblib
+import os
 import numpy as np
-from pathlib import Path
+from sklearn.ensemble import IsolationForest
 
-BASE_DIR = Path(__file__).resolve().parent
+# Fake training data (transaction amounts)
+X = np.array([
+    [100], [200], [500], [1000],
+    [3000], [7000], [12000], [20000]
+])
 
-X = np.random.rand(1000, 4)
+model = IsolationForest(
+    n_estimators=100,
+    contamination=0.2,
+    random_state=42
+)
 
-model = IsolationForest(contamination=0.05)
 model.fit(X)
 
-joblib.dump(model, BASE_DIR / "fraud_model.pkl")
+# Save model
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-print("fraud_model.pkl created")
+MODEL_PATH = os.path.join(MODEL_DIR, "isolation_forest.pkl")
+joblib.dump(model, MODEL_PATH)
+
+print("✅ Isolation Forest model saved at:", MODEL_PATH)
