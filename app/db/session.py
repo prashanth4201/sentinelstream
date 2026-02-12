@@ -1,8 +1,3 @@
-
-Prashanth Kumar
-1:03 PM (0 minutes ago)
-to me
-
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -10,7 +5,7 @@ from app.db.base import Base
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "sqlite:///./test.db" # fallback for tests (CI)
+    "sqlite:///./test.db"
 )
 
 engine = create_engine(
@@ -26,5 +21,4 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
-# 🔥 This creates tables automatically (important for CI)
 Base.metadata.create_all(bind=engine)
