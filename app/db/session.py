@@ -22,3 +22,14 @@ SessionLocal = sessionmaker(
 )
 
 Base.metadata.create_all(bind=engine)
+
+# ✅ ADD THIS
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+
