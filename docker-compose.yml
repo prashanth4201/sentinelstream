@@ -2,9 +2,9 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_DB: sentinel_db
-      POSTGRES_USER: prash
-      POSTGRES_PASSWORD: 4444
+      POSTGRES_DB: sentinelstream
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
 
   redis:
     image: redis:7

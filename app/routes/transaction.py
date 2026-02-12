@@ -1,9 +1,11 @@
-import joblib
-import numpy as np
+from sqlalchemy import Column, Integer, Float, String
+from app.db.base import Base
 
-model = joblib.load("app/ml/fraud_model.pkl")
 
-def ml_score(transaction):
-    data = np.array([[transaction.amount, transaction.lat, transaction.lon, transaction.hour]])
-    score = model.decision_function(data)
-    return float(score[0])
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    amount = Column(Float, nullable=False)
+    risk = Column(String(20), nullable=False)
